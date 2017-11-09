@@ -40,7 +40,7 @@ int main()
 			map.tiles[diamondx][diamondy].visibility = 1;
 	}
 
-
+	//We don't win if we see the diamonds, we win if the player is standing on the diamonds
 	if(map.tiles[diamondx][diamondy].visibility && strcmp(map.tiles[diamondx][diamondy].content, "DIAMOND"))
 	{
 		resetstate(fp,fp2);
@@ -56,15 +56,23 @@ int main()
 		printf("%s,", player.inventory[i]);
 	}
 	printf(":%d:", map.size);
+	
+	/*for(int i = 0; i < map.size; i++) {
+		for(int j = 0; j < map.size; j++) {
+			if(map.tiles[i][j].visibility == 1) {
+				printf("%d,%d,%d,%d,%s;", i, j, map.tiles[i][j].visibility, map.tiles[i][j].terrain, map.tiles[i][j].content);
+			}
+		}
+	}*/
+	
 	write_html(&player, &map);
-	printf(":");
 
 	// END - PRINT ALL INFO FOR HTML TO PARSE
-
 	write_file(&player, &map, fp); // write all info to the game state
 	
 	free(query); // free memory for the query string
 	free_memory(&player, &map); // free the player and map memory
+
 
 
   return 0;
