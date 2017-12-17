@@ -1,7 +1,20 @@
+/* This file contains the frame for the backend of Frupal
+// Contributors: (All group memebers) Jacob Collins, Caameron Nakasone, Sunanth Sakthivel, Elijah Rich-Wimmer, Dumitru Mitaru-Berceanu, Brady Testa, Weiwei Chen
+*/
+/*
+--Name: GROUP A
+--Class: CS 300
+--Assignment: Frupal Project
+--File: main.c
+--Description: This function handles IO from the game html page when the player makes a move or displays a map.
+*/
+
 #include "main.h"
+
 
 int main()
 {
+	//variable declarations
 	char * query;
 	char buffer[100];
 	s_cgi *cgi;
@@ -9,63 +22,165 @@ int main()
 	FILE *fp2;
 	Player player;
 	Map map;
-	int i, j, len, diamond_found;
-
+	int i, j, len, diamond_found, noEnergy, chest, map_selection=1, clue;
+	char* json_output = NULL;
+	char message[200];
+	int obstacle_index;
+	char obstacle[100];
+	int energymessage;
+	char useful_item[100];
 	diamond_found = 0;
+	noEnergy = 0;
+	int northaway, eastaway, southaway, westaway;
+	
+	
+	//EPRW Purchase IO
+	char purchase_request = ' ';
 
+	//Default message
+	strcpy(message, "WALKING...");  
+	//Default obstacle
+	strcpy(obstacle, "None");
+
+	//Initializing cgi parser
 	cgi = cgiInit();
 
 	strcpy(buffer,cgiGetValue(cgi,"query"));
 	len = strlen(buffer) + 1;
-	query = malloc(len * sizeof(char));
-	strcpy(query, buffer);
 
+	// [JMC] - 26NOV2017
+	// The following is for loading a specific map 
+	// If query is for loading, figure out the map selection
+	// else, do the normal allocation...
+	if(buffer[0] == 'L' && buffer[1] == 'O' && buffer[2] == 'A' && buffer[3] =='D') { 
+		// buffer[4] is skipped because it is the '-' in the query "LOAD-##"
+		map_selection = (buffer[5]-'0')*10 + (buffer[6]-'0');
+		query = malloc(5 * sizeof(char));
+		strcpy(query, "LOAD");
+	}
+	else { 
+		query = malloc(len * sizeof(char));
+		strcpy(query, buffer);
+	}
+	// [/JMC]
+
+	//DEFAULT HTML formating output
 	printf("Content-Type: text/html;charset=us-ascii\n\n");
 
+	//initializes player structure to default values
 	initialize_player(&player);
-	read_file(&player, &map, fp);
-
-	if(strcmp(query, "N") == 0 || strcmp(query, "S") == 0 || strcmp(query, "E") == 0 || strcmp(query, "W") == 0) {
-		move_player(query, &player, &map);
+	//reads player & map information for designated file
+	read_file(&player, &map, fp, map_selection);
+	
+	//If player has called load function, then 
+	if(strcmp(query, "LOAD") == 0) {
+		sprintf(message, "Welcome back to Frupal");
 	}
-
-	//temp location for diamond at coordinates (0,0). Fill in these values when location of diamond is placed. 
-	int diamondx = 0;
-	int diamondy = 0;
-	
-	
-	//If statement to check coordinates that the player has moved into and the coordiantes of the diamonds
-	if(map.tiles[diamondx][diamondy].x == player.x && map.tiles[diamondx][diamondy].y == player.y)
+	else
 	{
-			map.tiles[diamondx][diamondy].visibility = 1;
+		query[1]='\0';//this is an input (quickfix) that the querry string creates
+		//IF QUERY INPUT is equivalent to Direction (Attempt to move the player)
+		if(strcmp(query, "N") == 0 || strcmp(query, "S") == 0 || strcmp(query, "E") == 0 || strcmp(query, "W") == 0) {
+			//Sunanth Sakthivel
+			//logic to check for bog interactions as well as chest interactions (also includes instance of chest and bog interactions). 
+			energymessage = move_player(query, &player, &map);
+			if(energymessage == 2 || energymessage == 5 || energymessage == 6)//Bog Check   
+				sprintf(message, "You've just run into a bog, lost extra energy point");
+			if(energymessage == 3 || energymessage == 5)
+				chest = 1;	//run into type 1 chest.
+			if(energymessage == 4 || energymessage == 6)
+			{
+				chest = 2;	//run into type 2 chest. 
+			}
+			//-- --
+		}
+
 	}
 
-	//We don't win if we see the diamonds, we win if the player is standing on the diamonds
-	if(map.tiles[diamondx][diamondy].visibility && strcmp(map.tiles[diamondx][diamondy].content, "DIAMOND"))
+
+	//CN
+	//Check if the player has stepped on a useful item. If they have then the name of that item will be passed as a JSON
+	//to the html file, where a function will then be called that will allow the user to purchase the item
+	check_item(&player, &map, useful_item);	
+
+	//CN,WW,SS
+	//If statement to check coordinates that the player has moved into and the coordiantes of the diamonds
+	//if(map.tiles[diamondx][diamondy].x == player.x && map.tiles[diamondx][diamondy].y == player.y)
+	if(strcmp(map.tiles[player.x][player.y].content, "DIAMOND") == 0)
 	{
 		resetstate(fp,fp2);
 		free_memory(&player, &map); // free memory before reading info into the structs
-		read_file(&player, &map, fp);
+		read_file(&player, &map, fp, map_selection);
 		diamond_found = 1; // diamond has been found
+
 	}
 
-
-	// START - PRINT ALL INFO FOR HTML TO PARSE
-	printf("%d:%d:%d:%d:%d:", diamond_found, player.x, player.y, player.energy, player.money);
-	for(int i = 0; i < 10; i++) {
-		printf("%s,", player.inventory[i]);
+	// Check if the player has encountered an obstacle and decrement the energy appropriatley
+	if((obstacle_index = get_obstacle_index(&player, &map)) != -1){
+		strcpy(obstacle, obstacle_names[obstacle_index]);
 	}
-	printf(":%d:", map.size);
+
+	//SS
+	//Check for the appropriate clue and set clue variable to appropriate type of clue. 
+	//Retrieve information about diamond location from the check for clue function. 
+	clue = check_for_clue(&player, &map, &northaway, &eastaway, &southaway, &westaway); 
+	if(!clue || player.energy < 1)
+	{
+		clue = 0;	//set clue to 0 if no clue found. 
+	}
+
+	//CN	
+	//ENERGY CHECK
+	//Code to check whether the player has used up all of their energy. The code will alert the player that the game is over
+	//when the player is at 0 energy and tries to move again, not when it immediately hits 0.
+	if(player.energy < 1)
+	{
+		resetstate(fp,fp2);
+		free_memory(&player, &map);//free memory
+		read_file(&player, &map, fp, map_selection);	
+		noEnergy = 1;  //Player has run out of energy
+	}
+
+	// Append all data to json output
+	json_output = add_name_value_pair(json_output, "diamondFound", &diamond_found, INTEGER);
+	json_output = add_name_value_pair(json_output, "Xcoor", &player.x, INTEGER);
+	json_output = add_name_value_pair(json_output, "Ycoor", &player.y, INTEGER);
+	json_output = add_name_value_pair(json_output, "energy", &player.energy, INTEGER);
+	json_output = add_name_value_pair(json_output, "money", &player.money, INTEGER);
+	json_output = add_name_value_pair(json_output, "noEnergy", &noEnergy, INTEGER);
+	json_output = add_name_value_pair(json_output, "mapSize", &map.size, INTEGER);
+	json_output = add_name_value_pair(json_output, "message", message, STRING);
+	json_output = add_name_value_pair(json_output, "obstacle", obstacle, STRING);
+	json_output = add_name_value_pair(json_output, "chest", &chest, INTEGER);
+	json_output = add_name_value_pair(json_output, "clue", &clue, INTEGER);
+	json_output = add_name_value_pair(json_output, "useful_item", &useful_item, STRING);
+	json_output = add_name_value_pair(json_output, "northaway", &northaway, INTEGER);
+	json_output = add_name_value_pair(json_output, "eastaway", &eastaway, INTEGER);
+	json_output = add_name_value_pair(json_output, "southaway", &southaway, INTEGER);
+	json_output = add_name_value_pair(json_output, "westaway", &westaway, INTEGER);
+
+
+
+
+
+	// instead of appending the inventory as an array (which could be done but I was a bit lazy)
+	// just add each item as a new name-value pair. This is probably ok since our inventory is
+	// going to stay fixed at 10 items. 
+	char item_name[] = "Aitem"; 
+	for(int i = 0; i < 10; ++i){
+		json_output = add_name_value_pair(json_output, item_name, player.inventory[i], STRING);
+		++item_name[0];
+	}
+
+	// print out the json and a ';' to separate the json from
+	// the map that will be printed later
+	printf("%s;", json_output);
+	free(json_output);
 	
-	/*for(int i = 0; i < map.size; i++) {
-		for(int j = 0; j < map.size; j++) {
-			if(map.tiles[i][j].visibility == 1) {
-				printf("%d,%d,%d,%d,%s;", i, j, map.tiles[i][j].visibility, map.tiles[i][j].terrain, map.tiles[i][j].content);
-			}
-		}
-	}*/
-	
+
+	//Prints map to Table
 	write_html(&player, &map);
+
 
 	// END - PRINT ALL INFO FOR HTML TO PARSE
 	write_file(&player, &map, fp); // write all info to the game state
@@ -73,51 +188,5 @@ int main()
 	free(query); // free memory for the query string
 	free_memory(&player, &map); // free the player and map memory
 
-
-
   return 0;
-}
-
-void initialize_player(Player *player)
-{
-	int i;
-
-	player->x = 0;
-	player->y = 0;
-	player->energy = 0;
-	player->money = 0;
-	for(i = 0; i < 10; i++) {
-		player->inventory[i] = malloc(5 * sizeof(char));
-		strcpy(player->inventory[i], "None");
-	}
-}
-
-void free_memory(Player *player, Map *map)
-{
-	int i, j;
-
-	// Free all dynamic memory of the map
-	for(i = 0; i < map->size; i++) {
-		for(j = 0; j < map->size; j++) {
-			if(map->tiles[i][j].content) {
-				free(map->tiles[i][j].content);
-			}
-			map->tiles[i][j].content = NULL;
-		}
-		if(map->tiles[i]) {
-			free(map->tiles[i]);
-		}
-		map->tiles[i] = NULL;
-	}
-	if(map->tiles) {
-		free(map->tiles);
-	}
-	map->tiles = NULL;
-
-	// Free all dynamic memory for the player
-	for(i = 0; i < 10; i++) {
-		if(player->inventory[i]) {
-			free(player->inventory[i]);
-		}
-	}
 }

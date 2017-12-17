@@ -1,8 +1,140 @@
+<!-- 
+home.html
+This is the application served from the backend
+
+Contributors: 
+Dumitru Mitaru-Berceanu
+Elija Rich-Wimmer
+Jacob Collins
+Brady Testa
+Caameron Nakasone
+Sunanth Sakthivel
+WeiWei Chen
+-->
+
 <html>
 <head>
 <title> Frupal Project central page </title>
 
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
 <script>
+//Global variable: 
+frozen = false;
+
+//KEYBOARD WASD INPUT IMPLEMENTATION
+document.addEventListener("keypress", function(event)
+{
+	const keyName = event.key;
+	if(!frozen)
+	{
+		if(keyName == 'w')
+		{
+			movePlayer('No');
+		}
+		if(keyName == 's')
+		{
+			movePlayer('So');
+		}
+		if(keyName == 'a')
+		{
+			movePlayer('We');
+		}
+		if(keyName == 'd')
+		{
+			movePlayer('Ea');
+		}
+	}
+});
+
+
+function removeObstacle()
+{
+	// Hide the remove obstacle button
+	$("#remove-obstacle").hide();
+
+	// Find tool that the player choose
+	var tool = 'None';
+	$("#inventory").children().each(function(index, item){
+		if($(item).find("input").is(":checked")){
+			tool = $(item).find("label").text();
+			console.log(tool);
+		}
+	});
+
+	// call cgi to remove tool
+	arguments = "tool=" + tool;
+	var xhttp = new XMLHttpRequest();
+	URL = "remove_obstacle.cgi?" + arguments;
+	xhttp.open("GET",URL,false);
+	xhttp.send();
+	
+	var output = xhttp.responseText.split(";");
+	var playerData = JSON.parse(output[0]);
+	var map = output[1];
+
+	playerData.message = "Obstacle removed!";
+	// build map
+	$("#map").html(map);
+	// build player inventory
+	buildInventory(playerData);
+	writePlayerData(playerData);
+	checkIfDied(playerData);
+	
+	//Allows player to move forward
+	unfreezeInput();
+
+}
+
+function buildInventory(player){
+
+	// Player Inventory
+	var id = 'A';
+	$("#inventory").children().each(function(index, item){
+	 // only change the first 10 items, the last item will always be None
+	 // if the player chooses to not user any tool in his inventory
+		if(id < 'K') {
+			$(item).find("label").text(player[id + 'item']);
+			id = String.fromCharCode(id.charCodeAt() + 1)
+		}
+	});
+}
+
+
+//Currently doesn't reload the game map
+function checkIfDied(player){
+	//At this point, the game has already been reset and player energy will NOT be less than zero (An additional boolean has to be passed)
+	if(player.noEnergy  ==  1)
+	{
+		alert("GAME OVER! you have run out of energy and the game will now reset");
+	  document.getElementById("message").innerHTML = ""; 
+		return true;
+	}
+	return false;
+}
+
+function writePlayerData(playerData){
+
+	if(playerData.Xcoor != undefined){
+	
+		document.getElementById("X").innerHTML = playerData.Xcoor;
+	}
+	if(playerData.Ycoor != undefined){
+	
+		document.getElementById("Y").innerHTML = playerData.Ycoor;
+	}
+	if(playerData.energy != undefined){
+	
+		document.getElementById("energy").innerHTML = playerData.energy;
+	}
+	if(playerData.money != undefined){
+	
+		document.getElementById("money").innerHTML = playerData.money;
+	}
+	if(playerData.message){
+		document.getElementById("message").innerHTML = playerData.message;
+	}
+}
+
 function movePlayer(x)
 {
 	arguments="query="+x;
@@ -11,55 +143,453 @@ function movePlayer(x)
 	xhttp.open("GET",URL,false);
 	xhttp.send();
 
-	var output = xhttp.responseText.split(":");
+	var output = xhttp.responseText.split(";");
+	var playerData = JSON.parse(output[0]);
+	var map = output[1];
+//	var map_size = output[7];
 
-	document.getElementById("diamonds_found").innerHTML = output[0];
-	document.getElementById("X").innerHTML = output[1];
-	document.getElementById("Y").innerHTML = output[2];
-	document.getElementById("energy").innerHTML = output[3];
-	document.getElementById("money").innerHTML = output[4];
-	var inventory = output[5].split(",");
-	var map_size = output[6];
-
-	document.getElementById("inventory").innerHTML = "";
-	for(var i = 0; i < inventory.length; i++) {
-		document.getElementById("inventory").innerHTML = document.getElementById("inventory").innerHTML + "<br>" + inventory[i];
+	writePlayerData(playerData);
+	buildInventory(playerData);
+	//Hides inventory buttons when loading game for first time
+	if(x == 'LOAD'){
+		$("#inventory").hide();
+		$("#remove-obstacle").hide();
 	}
 
-	document.getElementById("map").innerHTML = output[7];
+	//Map Display
+	document.getElementById("map").innerHTML = map;
+
+	//Game Completion Check
+	if(playerData.diamondFound == 1)
+	{
+		alert("YOU HAVE FOUND THE DIAMONDS!");
+		load();
+	}
+
+	//At this point, the game has already been reset and player energy will NOT be less than zero (An additional boolean has to be passed)
+	if(checkIfDied(playerData) == true){
+	}
+	else if(playerData.obstacle != "None")
+	{
+		var message = "You've encountered a " + playerData.obstacle + "!! Choose a tool from your inventory to remove it...make sure you choose the right tool for the right job";
+		$("#message").text(message);
+		$("#remove-obstacle").show();
+		$("#inventory").show();
+		alert("Choose an item from the inventory and then hit the remove obstacle button!");
+		
+		freezeInput();
+	}
+	if(playerData.noEnergy == 1)
+	{
+		alert("GAME OVER! you have run out of energy and the game will now reset");
+	  document.getElementById("message").innerHTML = "";
+		load();
+	}
+	if(playerData.chest == 1)
+	{
+		alert("You just found a Type 1 Treasure Chest! You gained 100 whiffles");
+	}
+	if(playerData.chest == 2)
+	{
+		alert("You just found a Type 2 Treasure Chest! You just lost all whiffles");
+	}
+	//check for type of clue (this is true clue), if statements to check different cases.
+	if(playerData.clue == 1)
+	{
+		var money = playerData.money - 100;
+		var northaway = playerData.northaway;
+		var eastaway = playerData.eastaway;
+		var southaway = playerData.southaway;
+		var westaway = playerData.westaway;
+		if(northaway && !eastaway && !southaway && !westaway)
+		{
+			alert("CLUE: You are " + playerData.Xcoor + " grovnicks from the western border, you possess more than " + money + "Whiffles, and the royal diamonds are located " + playerData.northaway + " grovnicks to the north");
+		}
+		else if (!northaway && eastaway && !southaway && !westaway)	
+		{
+			alert("CLUE: You are " + playerData.Xcoor + " grovnicks from the western border, you possess more than " + money + "Whiffles, and the royal diamonds are located " + playerData.eastaway + " grovnicks to the east");
+		
+		}
+		else if (!northaway && !eastaway && southaway && !westaway)	
+		{
+			alert("CLUE: You are " + playerData.Xcoor + " grovnicks from the western border, you possess more than " + money + "Whiffles, and the royal diamonds are located " + playerData.southaway + " grovnicks to the south");
+		}
+		else if (!northaway && !eastaway && !southaway && westaway)	
+		{
+			alert("CLUE: You are " + playerData.Xcoor + " grovnicks from the western border, you possess more than " + money + "Whiffles, and the royal diamonds are located " + playerData.westaway + " grovnicks to the west");
+		
+		}
+		else if (northaway && eastaway)	
+		{
+			alert("CLUE: You are " + playerData.Xcoor + " grovnicks from the western border, you possess more than " + money + "Whiffles, and the royal diamonds are located " + playerData.northaway + " grovnicks to the north and " + playerData.eastaway + " grovnicks to the east.");
+		
+		}
+		else if (northaway && westaway)	
+		{
+			alert("CLUE: You are " + playerData.Xcoor + " grovnicks from the western border, you possess more than " + money + "Whiffles, and the royal diamonds are located " + playerData.northaway + " grovnicks to the north and " + playerData.westaway + " grovnicks to the west.");
+		
+		}
+		else if (southaway && westaway)	
+		{
+			alert("CLUE: You are " + playerData.Xcoor + " grovnicks from the western border, you possess more than " + money + "Whiffles, and the royal diamonds are located " + playerData.southaway + " grovnicks to the south and " + playerData.westaway + " grovnicks to the west.");
+		
+		}
+		else if (southaway && eastaway)	
+		{
+			alert("CLUE: You are " + playerData.Xcoor + " grovnicks from the western border, you possess more than " + money + "Whiffles, and the royal diamonds are located " + playerData.southaway + " grovnicks to the south and " + playerData.eastaway + " grovnicks to the east.");
+		
+		}
+	}
+	//display the false clue if found
+	if(playerData.clue == 2)
+	{
+		var money = playerData.money + 1000;
+		if(playerData.Xcoor)
+		{
+			var fborder = 0;
+		}
+		else
+		{
+			var fborder = 1;
+		}
+		alert("CLUE: You are " + fborder + " grovnicks from the western border, you posses more than " + money + "Whiffles, and the royal diamonds are located 0 grovnicks to the east and 0 grovnicks to the south");
+	}
+	//check if the player has found a useful item
+	
+	//WW, powerbar is also one of the item that needs to be checked
+	if(playerData.useful_item == "Energy")
+	{
+		if(confirm("You have found a powerbar for 1 whiffle, it will increase your energy by 20, do you want to buy it?"))
+		{
+			buy_item(playerData.useful_item);
+		}
+	}
+
+	else if(playerData.useful_item == "Hatchet")
+	{
+		if(confirm("You have found a hatchet for 15 whiffles, do you want to buy it?"))
+		{
+			buy_item(playerData.useful_item);
+		}
+	}
+	else if(playerData.useful_item == "Axe")
+	{
+		if(confirm("You have found a Axe for 30 whiffles, do you want to buy it"))
+		{
+			buy_item(playerData.useful_item);
+		}
+	}
+	else if(playerData.useful_item == "Chainsaw")
+	{
+		if(confirm("You have found a Chainsaw for 60 whiffles, do you want to buy it"))
+		{
+			buy_item(playerData.useful_item);
+		}
+	}
+	else if(playerData.useful_item == "Chisel")
+	{
+		if(confirm("You have found a Chisel for 5 whiffles, do you want to buy it"))
+		{
+			buy_item(playerData.useful_item);
+		}
+	}
+	else if(playerData.useful_item == "Sledge")
+	{
+		if(confirm("You have found a Sledge for 25 whiffles, do you want to buy it"))
+		{
+			buy_item(playerData.useful_item);
+		}
+	}
+	else if(playerData.useful_item == "Jackhammer")
+	{
+		if(confirm("You have found a Jackhammer for 100 whiffles, do you want to buy it"))
+		{
+			buy_item(playerData.useful_item);
+		}
+	}
+	else if(playerData.useful_item == "Machete")
+	{
+		if(confirm("You have found a Machete for 25 whiffles, do you want to buy it"))
+		{
+			buy_item(playerData.useful_item);
+		}
+	}
+	else if(playerData.useful_item == "Shears")
+	{
+		if(confirm("You have found a Shears for 35 whiffles, do you want to buy it"))
+		{
+			buy_item(playerData.useful_item);
+		}
+	}
+	else if(playerData.useful_item == "Boat")
+	{
+		if(confirm("You have found a boat for 500 whiffles, do you want to buy it?"))
+		{
+			buy_item(playerData.useful_item);
+		}
+	}
+
+	else if(playerData.useful_item == "Binoculars")
+	{
+		if(confirm("You have found a pair of binoculars for 50 whiffles, do you want to buy it?"))
+		{
+			buy_item(playerData.useful_item);
+		}
+	}
 }
+
+
+
+function buy_item(x)
+{			
+	//Contributors: Caameron Nakasone
+	var itemArgument = "item=" + x;
+	var xhttp = new XMLHttpRequest();
+	URL = "buy_item.cgi?" + itemArgument;
+	xhttp.open("GET", URL,false);
+	xhttp.send();
+
+	var output = xhttp.responseText.split(";");
+	var playerData = JSON.parse(output[0]);
+	var map = output[1];
+
+	document.getElementById("X").innerHTML = playerData.Xcoor;
+	document.getElementById("Y").innerHTML = playerData.Ycoor;
+	document.getElementById("energy").innerHTML = playerData.energy;
+	document.getElementById("money").innerHTML = playerData.money;
+	document.getElementById("message").innerHTML = playerData.message;
+
+	writePlayerData(playerData);
+
+	//Map Display
+	document.getElementById("map").innerHTML = map;
+}
+
+function makepurchase(x)
+{
+
+}
+
+
+function toggleInventory()
+{
+	var inventory = document.getElementById("inventory");
+	if(inventory.style.display == 'none') {
+		inventory.style.display = 'block';
+	}
+	else {
+		inventory.style.display = 'none';
+	}
+}
+
+//Keeps player from using keys or buttons untill Obstacle removed
+function freezeInput()
+{
+	$("#button_bar").hide();
+	frozen = true;
+}
+function unfreezeInput()
+{
+	frozen = false;
+	$("#button_bar").show();
+}
+
+// Load function to be called for every load, win, or lose
+function load()
+{
+	var maps = [
+		"Default",
+		"Load last game",
+		"Hero Movement",
+		"Discover Royal Diamonds",
+		"Run out of energy",
+		"Encounter a Bog",
+		"Encounter a Power Bar",
+		"Encounter an Obstacle",
+		"Display the Player's Inventory List",
+		"Add Useful Items to the Players Inventory",
+		"Encounter a Type 1 Treasure Chest",
+		"Encounter a Type 2 Treasure Chest",
+		"Encounter Water(River/Lake",
+		"Encounter Binoculars",
+		"Buy Boat",
+		"Clues",
+		"Walls",
+		"Obstacle Removal Tools"
+	]
+
+	var message = "Select a test map...\n";
+	for(var i = 0; i < maps.length; i++) {
+		message = message + i + ". " + maps[i] + "\n";	
+	}
+
+	var selection;
+	var query = "LOAD-";
+	var output = window.prompt(message);
+	if(output >= 0 && output <= 9) {
+		selection = maps[output];
+		query = query + "0" + output;
+	}
+	else if(output >= 10 && output <= 17) {
+		selection = maps[output];
+		query = query + output;
+	}
+	else {
+		selection = maps[0];
+		query = query + '00';
+	}
+
+	movePlayer(query);
+}
+
 </script>
 
 <style>
+
+.parent {
+  position: relative;
+  top: 0;
+  left: 0;
+}
+.image1 {
+  position: relative;
+  top: 0;
+  left: 0;
+  height: 30;
+}
+.image2 {
+  position: absolute;
+  top: 00px;
+  left: 00px;
+  height: 30;
+}
+
+
 #coordinates {
 	text-align: center;
+	}
+* {
+    box-sizing: border-box;
 }
+
+body {
+    margin: 0;
+}
+
+/* Create two equal columns that floats next to each other */
+.column {
+    float: left;
+	align: "center";
+    padding: 10px;
+}
+
+
+/* Clear floats after the columns */
+.row:after {
+    content: "";
+    display: table;
+    clear: both;
+}
+
 </style>
 
 </head>
+
 
 <h1>
 Frupal Project center
 </h1>
 
 
-<table style = "width:100%">
+<center><table id="button_bar" style = "width:50%; background-color:#b7c2ff;">
 	<tr><th></th><th><button type = "button" onclick = movePlayer('N')>NORTH</button></th>
 	</tr>
 	<tr><th><button type="button" onclick = movePlayer('W')>West</button><th></th><th><button type = "button" onclick = movePlayer('E')>East</button></th>
-	</tr>
+	</th>
 	<tr><th></th><th><button type = "button" onclick = movePlayer('S')>SOUTH</button></th>
 	</tr>
-</table>
+</table></center>
 
-Diamonds found: <span id = "diamonds_found"></span><br><br>
-Player Coordinates: <span id = "X"></span> <span id = "Y"></span><br>
-Player Energy: <span id = "energy"></span><br> 
-Player Money: <span id = "money"></span><br> 
-Inventory: <span id = "inventory"></span><br>
-Map: <span id = "map"></span><br>
+<div class="row">
+  <div class="column" align="center" style="background-color:#ffffff; width:75%;">
+    <span id = "map" style = "align:center;"></span>
+  </div>
+  <div class="column" style="background-color:#bbb; width:25%;">
+    <h2><center>Inventory</center></h2>
+	Player Coordinates: <span id = "X"></span> <span id = "Y"></span><br>
+	Player Energy: <span id = "energy"></span><br> 
+	Player Money: <span id = "money"></span><br> 
+	<button type="button" onclick=toggleInventory()>Toggle Inventory</button>
+		<div id="inventory">
+		  <div>
+		  		<input type="radio" name="item">
+		  		<label></label>
+		  </div>
+		  <div>
+		  		<input type="radio" name="item">
+		  		<label></label>
+		  </div>
+		  <div>
+		  		<input type="radio" name="item">
+		  		<label></label>
+		  </div>
+		  <div>
+		  		<input type="radio" name="item">
+		  		<label></label>
+		  </div>
+		  <div>
+		  		<input type="radio" name="item">
+		  		<label></label>
+		  </div>
+		  <div>
+		  		<input type="radio" name="item">
+		  		<label></label>
+		  </div>
+		  <div>
+		  		<input type="radio" name="item">
+		  		<label></label>
+		  </div>
+		  <div>
+		  		<input type="radio" name="item">
+		  		<label></label>
+		  </div>
+		  <div>
+		  		<input type="radio" name="item">
+		  		<label></label>
+		  </div>
+		  <div>
+		  		<input type="radio" name="item">
+		  		<label></label>
+		  </div>
+		  <div>
+		  		<input type="radio" name="item" checked>
+		  		<label>None</label>
+		  </div>
 
 
+
+
+
+
+		</div>
+	<center>Message: <span id = "message"></span></center><br>
+	<div id="remove-obstacle">
+	<button onclick="removeObstacle()">Remove Obstacle</button>
+</div>
+  </div>
+ </div>
+ <pre>
+ Key
+  1: Tree
+  2: Blackbery Bush
+  3: Boulder
+  4: Energy Bar
+  5: Royal Diamonds
+ </pre>
+
+<script>
+load();
+</script>
 
 
 <html>
